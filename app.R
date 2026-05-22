@@ -462,6 +462,19 @@ server <- shinyServer(function(input, output, session) {
   target <- target[target >= low_threshold & target <= high_threshold]
   return(target) }
 
+  keep_marker_inlier_rows <- function(data, markers) {
+    keep_rows <- rep(TRUE, nrow(data))
+    markers <- unique(markers[markers %in% names(data)])
+
+    for (marker in markers) {
+      inlier_values <- remove_outliers2(data[[marker]])
+      keep_rows <- keep_rows & data[[marker]] %in% inlier_values
+    }
+
+    keep_rows[is.na(keep_rows)] <- FALSE
+    keep_rows
+  }
+
       find_mode2 <- function(x) {
         ux <- unique(x)
         ux[which.max(tabulate(match(x, ux)))]
@@ -2691,6 +2704,10 @@ observeEvent(c(input$xvar, input$yvar), {
     if (nrow(dfplot2) == 0) {
       return(bivariate_pair_error(xvar, yvar, "No finite values available for this plot."))
     }
+    dfplot2 <- dfplot2[keep_marker_inlier_rows(dfplot2, c(xvar, yvar)), , drop = FALSE]
+    if (nrow(dfplot2) == 0) {
+      return(bivariate_pair_error(xvar, yvar, "No values remain after outlier removal."))
+    }
 
     gate_xvar <- get_precomputed_bivariate_gate(
       gate_values, xvar, patient_data, patient_id, gate_x_override
@@ -2797,6 +2814,10 @@ observeEvent(c(input$xvar, input$yvar), {
     marker_data <- data[marker_rows, , drop = FALSE]
     if (nrow(marker_data) == 0) {
       return(make_pdf_message_grob(marker, "No finite marker values available for this plot."))
+    }
+    marker_data <- marker_data[keep_marker_inlier_rows(marker_data, marker), , drop = FALSE]
+    if (nrow(marker_data) == 0) {
+      return(make_pdf_message_grob(marker, "No values remain after outlier removal."))
     }
 
     is_positive <- if (is.finite(gate_value)) marker_data[[marker]] > gate_value else rep(FALSE, nrow(marker_data))
@@ -3190,7 +3211,7 @@ add_trivariate_gate_plane <- function(plot, axis, gate_value, plot_ranges, marke
     type = "mesh3d",
     # facecolor = rep("#FFA500", 2),
     color = "orange",
-    opacity = 0.06,
+    opacity = 0.2,
     inherit = FALSE,
     showlegend = TRUE,
     showscale = FALSE,
@@ -3222,6 +3243,8 @@ generatePlotTrivar <- function() {
     is.finite(dfplot2[[zvar]])
   dfplot2 <- dfplot2[finite_rows, , drop = FALSE]
   validate(need(nrow(dfplot2) > 0, "No finite marker values are available for the trivariate plot."))
+  dfplot2 <- dfplot2[keep_marker_inlier_rows(dfplot2, c(xvar, yvar, zvar)), , drop = FALSE]
+  validate(need(nrow(dfplot2) > 0, "No marker values remain after outlier removal for the trivariate plot."))
 
   dfplot2$trivariate_density <- get_density_3d(
     dfplot2[[xvar]],
