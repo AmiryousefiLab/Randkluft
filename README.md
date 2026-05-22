@@ -58,7 +58,6 @@ Randkluft expects a **cell-by-marker CSV table** with the following columns:
 
 | Column | Type | Description |
 |---|---|---|
-| `imageid` | string | Sample / image identifier (one per row) |
 | `X_centroid` | numeric | X spatial coordinate of the cell |
 | `Y_centroid` | numeric | Y spatial coordinate of the cell |
 | `<MarkerName>` | numeric | One column per marker (raw or log-transformed intensity) |
@@ -116,7 +115,8 @@ rsconnect::deployApp(appDir = ".", appPrimaryDoc = "app.R",
 
 If you use Randkluft in your research, please cite:
 
-> Amiryousefi A. *et al.* **Randkluft: automated unitary gating of CyCIF markers.** *Bioinformatics* (under review).
+> Amiryousefi A. *et al.* **Randkluft: visually-guided detection of rare
+high-intensity cells from CyCIF density skewness** *Bioinformatics* (under review).
 
 Until the paper is formally published, please cite the application URL:
 [https://irscope.shinyapps.io/Randkluft/](https://irscope.shinyapps.io/Randkluft/)
