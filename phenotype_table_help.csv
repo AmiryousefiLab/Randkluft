@@ -1,8 +1,0 @@
-"phenotype","markers"
-"CD4+ helper T cells","CD3+, CD4+, CD45+"
-"T cells","CD3+, CD45+"
-"B cells","CD45+, CD20+"
-"Tregs","CD3+, CD4+, CD45+, FOXP3+"
-"CD8+ cytotoxic T cells","CD3+, CD45+, CD8a+"
-"Exhausted CD8+ T cells","CD3+, CD45+, CD8a+, PD.L1+"
-"Macrophages/Monocytes","CD3-, CD45+, CD68+"

@@ -1,0 +1,15 @@
+# R session/local files
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# macOS
+.DS_Store
+
+# R/plot artifacts
+*.log
+
+# Deployment metadata
+/rsconnect/
+/manifest.json
