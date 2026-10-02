@@ -159,6 +159,8 @@ After uploading your file:
    - A confirmation notice appears:
      **“Gates are found!”**
 
+For each selected marker, Randkluft estimates the gate after excluding the bottom and top 1% of finite intensities. It then applies that gate to every original finite cell intensity, including values outside the estimation range. Non-finite intensities receive no positivity label.
+
 ---
 
 ## **3. Visual inspection and manual adjustment**

@@ -130,13 +130,13 @@ server <- shinyServer(function(input, output, session) {
 
       for (j in column_indices) {
         target <- df[df$imageid == unique_id, j]
-        target <- remove_outliers2(target)
-        target <- target[!is.infinite(target)]
+        target <- target[is.finite(target)]
+        plot_target <- remove_outliers2(target)
 
         marker <- paste0(c(unique_id, names_columns[j]), collapse = "; ")
-        output <- skew_gate(target, 0.01)
+        output <- estimate_gate(target, 0.01)
         gtGate <- ground_truth_gates_loaded$Gate[ground_truth_gates_loaded$Patient == unique_id & ground_truth_gates_loaded$Marker == names_columns[j]]
-        p_temp <- plot_gating_individual(target, output, marker, gtGate)
+        p_temp <- plot_gating_individual(plot_target, output, marker, gtGate)
         plot_list <- c(plot_list, list(p_temp))
       }
     }
@@ -326,29 +326,10 @@ observeEvent(input$updateGates, {
     print(resultdf_to_save)
     gate_results(resultdf_to_save)
 
-      dataframe_pos <- uploaded_df()
-
-    # Get all marker column names (excluding non-marker columns)
-    marker_columns <- selected_columns
-
-    # Iterate over each marker column and add positivity/negativity column
-    for (chosen_patient in unique_patients) {
-    for (marker_col in selected_columns) {
-      gate_value <- gate_results()$Gate[
-        gate_results()$Marker == marker_col &
-        gate_results()$Patient == chosen_patient
-      ]
-
-
-      # Add marker_positivity column based on the marker and its gate value
-      dataframe_pos[[paste0(marker_col, "_positivity")]] <- sapply(dataframe_pos[[marker_col]], determine_positivity, gate_value)
-    }
-    }
+    dataframe_pos <- label_cells_with_gates(uploaded_df(), resultdf_to_save)
 
     # Print first few rows to check the changes
     print(head(dataframe_pos))
-
-    print(unique(dataframe_pos$ELANE_positivity))
 
     uploaded_df(dataframe_pos)
 
@@ -736,7 +717,7 @@ resolve_gate_value <- function(patient_id, marker, data) {
   if (length(gate_value) == 0 || is.na(gate_value[1]) || !is.finite(gate_value[1])) {
     target <- suppressWarnings(as.numeric(data[data$imageid == patient_id, marker]))
     target <- target[is.finite(target)]
-    gate_value <- tryCatch(skew_gate(target, 0.01)$cutoff, error = function(e) NA_real_)
+    gate_value <- tryCatch(estimate_gate(target, 0.01)$cutoff, error = function(e) NA_real_)
   }
 
   gate_value <- as.numeric(gate_value[1])
@@ -759,11 +740,10 @@ make_marker_histogram_plot <- function(data, patient_id, marker, gate_value, tit
     )
   }
 
-  target <- remove_outliers2(target)
-  target <- target[is.finite(target)]
-  plot_df <- data.frame(x = target)
   n_positive <- if (is.na(gate_value)) NA_integer_ else sum(target > gate_value)
   positive_rate <- if (is.na(gate_value)) NA_real_ else round(n_positive / length(target), 3)
+  plot_values <- remove_outliers2(target)
+  plot_df <- data.frame(x = plot_values)
 
   histogram_plot <- ggplot(plot_df, aes(x = x)) +
     geom_histogram(
@@ -791,7 +771,7 @@ make_marker_histogram_plot <- function(data, patient_id, marker, gate_value, tit
       aspect.ratio = 1
     )
 
-  if (length(unique(target)) > 1) {
+  if (length(unique(plot_values)) > 1) {
     histogram_plot <- histogram_plot + geom_density(color = "#2c3e50", size = 0.6)
   }
 

@@ -1,6 +1,5 @@
 # Statistical gating and gate-table calculations.
-# These functions intentionally retain the app's existing cutoff behavior,
-# including the two-component GMM fallback for negatively skewed data.
+# These functions retain the two-component GMM fallback for negatively skewed data.
 
 remove_outliers2 <- function(target, low_percentile = 1, high_percentile = 99) {
   low_threshold <- quantile(target, low_percentile / 100)
@@ -79,8 +78,11 @@ skew_gate <- function(x, alpha = 0.01) {
   )
 }
 
-# The multi-marker path removes percentile outliers; the single-marker path
-# historically does not. Keep those distinct until the scientific policy changes.
+estimate_gate <- function(values, alpha = 0.01) {
+  finite_values <- values[is.finite(values)]
+  skew_gate(remove_outliers2(finite_values), alpha)
+}
+
 get_gates_csv <- function(dataframe, session) {
   data <- dataframe
   unique_imageids <- unique(data$imageid)
@@ -98,10 +100,7 @@ get_gates_csv <- function(dataframe, session) {
     sub_data <- data[data$imageid == imageid, -1]
     for (col_idx in 1:ncol(sub_data)) {
       col_name <- colnames(sub_data)[col_idx]
-      values <- sub_data[, col_idx]
-      values <- remove_outliers2(values)
-      values <- values[!is.infinite(values)]
-      result <- skew_gate(values, alpha)$cutoff
+      result <- estimate_gate(sub_data[, col_idx], alpha)$cutoff
       results_df <- rbind(results_df, data.frame(Patient = imageid, Marker = col_name, Gate = result))
       cat("Image ID:", imageid, "Marker:", col_name, "Result:", result, "\n")
       current_iteration <- (match(imageid, unique_imageids) - 1) * ncol(sub_data) + col_idx
@@ -125,7 +124,7 @@ get_gates_csv_single <- function(dataframe) {
   for (imageid in unique_imageids) {
     for (marker in markers) {
       subset_data <- data[data$imageid == imageid, c("imageid", marker)]
-      result_to_plot <- skew_gate(subset_data[[marker]])
+      result_to_plot <- estimate_gate(subset_data[[marker]])
       cutoff_value <- result_to_plot$cutoff
       results_df <- rbind(results_df, data.frame(Patient = imageid, Marker = marker, Gate = cutoff_value))
       cat("Image ID:", imageid, "Marker:", marker, "Result:", cutoff_value, "\n")
@@ -136,5 +135,19 @@ get_gates_csv_single <- function(dataframe) {
 }
 
 determine_positivity <- function(marker_intensity, gate_value) {
+  if (!is.finite(marker_intensity) || !is.finite(gate_value)) return(NA_character_)
   if (marker_intensity > gate_value) "+" else "-"
+}
+
+label_cells_with_gates <- function(data, gates) {
+  for (marker in unique(gates$Marker)) {
+    labels <- rep(NA_character_, nrow(data))
+    for (gate_row in which(gates$Marker == marker)) {
+      rows <- which(data$imageid == gates$Patient[gate_row])
+      labels[rows] <- vapply(data[[marker]][rows], determine_positivity,
+                             character(1), gate_value = gates$Gate[gate_row])
+    }
+    data[[paste0(marker, "_positivity")]] <- labels
+  }
+  data
 }

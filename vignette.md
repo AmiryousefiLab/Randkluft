@@ -77,10 +77,12 @@ A progress bar labelled **"Randkluft in Action…"** tracks completion. When fin
 For each marker × patient pair:
 
 1. Remove top and bottom 1% outliers.
-2. Compute the skewness of the full distribution.
+2. Compute the skewness of the remaining finite values.
 3. If skewness < 0 (negatively skewed), fall back to a two-component Gaussian Mixture Model gate.
 4. Otherwise, perform binary search on the upper bound `b` of the distribution, shrinking it until `skewness(data[data < b]) ≈ 0` (tolerance α = 0.01, maximum 100 iterations).
 5. The converged `b` is returned as the gate.
+
+The 1% trimming is used only to estimate the gate, whether one marker or several are selected. The resulting gate is applied to all original finite cell intensities, including values outside the trimmed range. Non-finite intensities are left without a positivity label.
 
 ---
 
