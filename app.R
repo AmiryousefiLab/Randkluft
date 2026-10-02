@@ -29,7 +29,6 @@ library(fastICA)
 library(tiff)
 library(datasets)
 data(iris)
-library(umap)
 library(stringr)
 library(tidyr)
 library(PEkit)
@@ -39,6 +38,9 @@ library(gridExtra)
 
 # source codes
 source("utils.R")
+source("R/gating.R")
+source("R/data-input.R")
+source("R/app-ui.R")
 
 df_example = read.csv(file.path("data", "exemplar-001--unmicst_cell.csv"))
 
@@ -46,434 +48,13 @@ ground_truth_gates_loaded = read.csv(file.path("data", "tuulia_data_GT.csv"))
 
 df_example_PHENOTYPE = read.csv(file.path("data", "phenotype_table_help.csv"))
 
-options(shiny.trace = TRUE,
-        shiny.maxRequestSize = 30 * 1024 ^ 3) # change max file limit
-        # options(shiny.maxRequestSize = 10 * 1024 ^ 3)  # Set to 10 GB
+options(shiny.trace = TRUE, shiny.maxRequestSize = 100 * 1024 ^ 3)
 
 
-ui <- shinyUI(fluidPage(
-  shinyjs::useShinyjs(),
-  tags$header(HTML(html_code)),
+ui <- build_app_ui(html_code)
 
 
-  tags$style(HTML("
-  .pagination-button {
-    float: right; /* This will float the button to the right */
-    margin-right: 10px; /* You can adjust the margin to control spacing */
-  }
-")),
-
-tags$style(HTML("
-  .pagination-button-back {
-    float: left; /* This will float the button to the right */
-    margin-left: 10px; /* You can adjust the margin to control spacing */
-  }
-")),
-
-tags$head(tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css")),
-
-
-  tags$div(
-    id = "title",
-    tags$h1(id = "tool_name", "Randk\\uft", style = "color:navy;"),
-    tags$h4(
-      id = "tool_exp",
-      tags$em("Unitary gating of the CyCIF markers"),
-      style = "color:black;"
-    )
-  ),
-
-  tags$div(
-    id = "tool",
-    tabsetPanel(
-      tabPanel(
-        strong("Home"),
-        br(),
-        tags$div(includeMarkdown("./documents/home.md"), style = "max-width:800px;")
-      ),
-
-      tabPanel(
-        strong("Randkluft"),
-        br(),
-        sidebarLayout(
-          # Sidebar with a slider input
-          sidebarPanel(width = 4, br(),
-                       tabsetPanel(
-
-                         tabPanel(
-                          value=1,
-                           strong("Upload file"),
-                           br(),
-
-                          #  p("Please provide your .csv cell-marker table."),
-
-                          p("Please upload a .csv file with cell-marker data following the format described in",
-                                                   strong("Help,"), "
-                                        or download the example data set found in",
-                                                   downloadLink('download_example_data', strong(' here.') )
-                                                 ),
-
-
-                          #  fluidRow(column(
-                          #    width = 8,  fileInput("cell_file", label = "Cell-Marker File")
-                          #  ),
-
-                           fluidRow(
-                              column(width = 8,
-                                    div(id = "file_input_div",
-                                        fileInput("cell_file", label = "Upload a CSV file", accept = ".csv", buttonLabel = "Browse"))),
-                                        tags$div(id = "message_loading_data", style = "font-size: 20px; position: fixed; bottom: 0; right: calc(5% + 10px);"),
-
-                              column(width = 4, actionButton("remove_file", "Remove", icon = icon("trash")))
-                            ),
-
-
-                         ),
-
-
-                         tabPanel(strong("Randkluft"),
-                          value=3,
-                          tabsetPanel(id='sidebar2',
-                            tabPanel(
-                          value=1,
-                           strong("Essential"),
-                           br(),
-
-                          #  column(
-                          #    width = 4, actionButton("remove_file", "Remove", icon = icon("trash"))
-                          #  )),
-                           actionButton(
-                             inputId = "run_gate",
-                             "Randkluft",
-                           ),
-
-                          br(),
-                          br(),
-
-                           checkboxGroupInput("selected_columns", "Select Markers", choices = NULL, selected = NULL),
-                           br(),
-
-
-                           materialSwitch(inputId = "gen_hist_plots_on_off",
-                                                                       label = "Show gates",
-                                                                       status = "danger",
-                                                                       right=TRUE,
-                                                                       value = TRUE ),
-
-
-                          # Add the progress bar div element here
-                           tags$div(id = "message", style = "font-size: 20px; position: fixed; bottom: 0; right: calc(5% + 10px);"),
-                           tags$div(id = "message_gen_hist", style = "font-size: 20px; position: fixed; bottom: 0; right: calc(5% + 10px);"),
-
-
-                          p('Click button to download a .csv  file with the gate estimations.'),
-                          downloadButton(outputId = "downloadEstimations", label = "Download Gate Estimates"),
-
-                          p('Click button to download current set of plots that are displayed.'),
-                          downloadButton(outputId = "downloadcurrent", label = "Download Current Plot"),
-
-                          p('Click button to download pdf file of plots for all selected markers.'),
-                          downloadButton(outputId = "downloadall", label = "Download All Plots")
-
-
-                             ),
-
-
-                              tabPanel(
-                          value=2,
-
-                           strong("Bivariate"),
-                           br(),
-
-                             varSelectInput("xvar", "X variable", NULL, selected = NULL),
-                             varSelectInput("yvar", "Y variable", NULL, selected = NULL),
-
-                             p('Click button to download the current bivariate plot.'),
-                             downloadButton(outputId = "download_bivariate_current", label = "Download Current Plot"),
-
-                             p('Click button to download bivariate plots for all selected marker pairs.'),
-                             downloadButton(outputId = "download_bivariate_all", label = "Download All Plots"),
-
-                             hr(),
-                         ),
-
-                            tabPanel(
-                          value=3,
-
-                           strong("Trivariate"),
-                           br(),
-
-                             varSelectInput("xvarTri", "X variable", NULL, selected = NULL),
-                             varSelectInput("yvarTri", "Y variable", NULL, selected = NULL),
-                            varSelectInput("zvar", "Z variable", NULL, selected = NULL),
-
-
-                             hr(),
-                         )
-                             )
-
-                         ),
-                         tabPanel(
-                         value=4,
-                          strong("Extra"),
-                          tabsetPanel(id='sidebar_post',
-                            tabPanel(
-                          value=1,
-                           strong("Phenotyping"),
-                            br(),
-
-                          #  p("Please provide your .csv cell-marker table."),
-
-                          p("Please upload your phenotyping workflow following the format described in",
-                                                   strong("Help,"), "
-                                        or download the example workflow found in",
-                                                   downloadLink('download_example_data2', strong(' here.') )
-                                                 ),
-
-                           fluidRow(
-                              column(width = 8,
-                                    div(id = "file_input_div2",
-                                        fileInput("phen_wfl", label = "Upload a CSV file", accept = ".csv", buttonLabel = "Browse"))),
-                                        tags$div(id = "message_loading_data2", style = "font-size: 20px; position: fixed; bottom: 0; right: calc(5% + 10px);"),
-                                        br(),
-                              column(width = 4, actionButton("remove_file2", "Remove", icon = icon("trash")))
-                            ),
-
-
-                          actionButton("define_phenotype_AUTO", "Phenotype my data"),
-                          br(),
-                          br(),
-
-                          uiOutput("marker_checkboxes"),
-                          materialSwitch(inputId = "any_indicator",
-                                                            label = "Any positive",
-                                                            status = "info",
-                                                            right= TRUE,
-                                                            value = FALSE),
-                          # Marker selection input
-                          textInput("phenotype_name", "Phenotype Name"),
-                          actionButton("define_phenotype", "Add phenotype definition"),
-                          br(),
-                          br(),
-                          p('You can download the your original CSV file with phenotypes added as a new column, as well as the phenotype workflow you defined.'),
-                          downloadButton(outputId = "downloadPhenotypes", label = "Download Phenotyped Data"),
-                          downloadButton(outputId = "downloadPhenotypeTable", label = "Download Workflow"),
-                          br(),
-
-
-                        )
-
-
-                        )
-
-
-                        ),
-                    id = "sidebartab"
-                       )),
-
-
-                     mainPanel(width=8,
-
-                     tabsetPanel(
-            conditionalPanel(
-              condition = "input.sidebar2 == 1 && input.sidebartab == 3",
-              br(),
-              numericInput('intercept', 'Type Gate Value', value = ""),
-              actionButton(inputId = "updateGates", label = "Update Gate"),
-
-
-              conditionalPanel(
-                condition = "input.intercept == ''",
-                div(
-                  class = "alert alert-danger",
-                  "Please enter a valid gate value."
-                )
-              ),
-
-        # plotOutput("gated_histogram_on_page"),
-        plotOutput("gated_histogram_on_page", height = "1000px", width = "1000px"),
-
-         # Pagination buttons
-	div(
-	  class = "pagination-button",
-	  actionButton(inputId = "nextMarker", label = "Next Marker ", icon("arrow-right"))
-	),
-
-div(
-  class = "pagination-button-back",
-  actionButton(inputId = "prevMarker", label = "Previous Marker ", icon("arrow-left"))
-)
-
-
-      ),
-
-      conditionalPanel(
-        condition = "input.sidebartab == 3 && input.sidebar2 == 2",
-        # Add numeric input fields and a button
-        numericInput("gate_xvar_update", "Enter Gate for X Variable:", value = ""),
-        numericInput("gate_yvar_update", "Enter Gate for Y Variable:", value = ""),
-        actionButton("update_gates_bivariate", "Update Gates"),
-        plotOutput("plot2", height = "1000px", width = "1000px"),
-        verbatimTextOutput("prop_summary")
-
-
-      ),
-       conditionalPanel(
-        condition = "input.sidebartab == 3 && input.sidebar2 == 3",
-        # Add numeric input fields and a button
-        numericInput("gate_xvar_updateTri", "Enter Gate for X Variable:", value = ""),
-        numericInput("gate_yvar_updateTri", "Enter Gate for Y Variable:", value = ""),
-        numericInput("gate_zvar_update", "Enter Gate for Y Variable:", value = ""),
-        actionButton("update_gates_trivariate", "Update Gates"),
-        plotlyOutput("plot_trivariate", height = "1000px", width = "1000px"), # learn this to be min and max, put 2 percent offsset multipled by like 2 percent plus minus
-
-
-      ),
-      conditionalPanel(
-        condition = "input.sidebartab == 2 && input.sidebar1 == 1",
-        # plotOutput("image_garage_output", brush="plot_brush", height = "1000px", width = "1000px"),
-        plotlyOutput("image_garage_output", height = "1000px", width = "1000px"),
-
-        verbatimTextOutput("subset_summary")
-      ),
-       conditionalPanel(
-        condition = "input.sidebartab == 2 && input.sidebar1 == 2",
-        plotOutput("tissue_score_out"),
-        plotOutput("modes_plot_output"),
-        # plotOutput("histogram_plots_cyles"),
-        # plotOutput("CRUDEINDEX"),
-        # plotOutput("suggested_removal"),
-        plotOutput("klPLOToutput"),
-        plotlyOutput("quality_gauge"),
-        # plotlyOutput("quality_gauge_kl")
-
-      ),
-
-
-       conditionalPanel(
-        condition = "input.sidebartab == 4 && input.sidebar_post == 1",
-        # textOutput("phenotype_output"),
-              # Create two sections: Left and Right
-
-                column(width = 6, tableOutput("phenotypeTable")),
-                column(width = 6, plotOutput("pheno_bar", height = "500px", width = "500px")),
-
-              verbatimTextOutput("post_statistics"),
-
-
-      # tableOutput("phenotypeTable")# Add your table output here
-
-      ),
-
-
-      conditionalPanel(
-        condition = "input.sidebartab == 4 && input.sidebar_post == 2",
-        plotOutput("icaAnalysis2"),
-      ),
-
-
-       conditionalPanel(
-        condition = "input.sidebartab == 4 && input.sidebar_post == 0",
-        # plotOutput("icaAnalysis"),
-      ),
-
-
-    ),
-
-
-        )
-
-
-        )
-
-
-      ),
-      tabPanel(
-        strong("Help"),
-        br(),
-        tags$div(includeMarkdown("./documents/help.md"), style = "max-width:800px;")
-      ),
-      tabPanel(
-        strong("FAQ"),
-        br(),
-        column(width = 1, ""),
-        br(),
-        column(
-          width = 6,
-          h4(strong("Q:"), tags$em(strong(
-            "Why are some proportions or total sample numbers zero?"
-          ))),
-          p(strong("A:"),
-            "Randkluft searches for a positively skewed signal emerging from background noise.
-  In cases where the marker distribution is already negatively skewed or lacks a discernible positive tail,
-  the algorithm terminates early without estimating a gate.
-  In these situations, we recommend visual inspection of the distribution and manual gating."
-          ),
-          br(),
-
-          h4(strong("Q:"), tags$em(strong(
-            "Why do I get 'Disconnected from the server' after uploading my data?"
-          ))),
-          p(strong("A:"),
-            "This typically indicates that the uploaded file does not conform to the expected input format.
-  Please consult the Help section and ensure that column names, data types, and required fields
-  strictly follow the documented input structure before re-uploading."
-          ),
-          br(),
-
-          h4(strong("Q:"), tags$em(strong(
-            "Why are upload and analysis slow?"
-          ))),
-          p(strong("A:"),
-            "Randkluft treats all numeric columns—including spatial coordinates and DNA/Hoechst channels—as potential gating targets.
-  If your input file contains many columns that are not required for analysis, removing them before upload
-  can significantly improve performance and reduce processing overhead."
-          ),
-          br(),
-
-          h4(strong("Q:"), tags$em(strong(
-            "Which data are used to detect the gates?"
-          ))),
-          p(strong("A:"),
-            "At each step of the workflow, Randkluft internally stores the active dataset associated with the selected panel.
-  All subsequent analyses use this updated data.
-  Both the modified datasets and the resulting gate estimates can be downloaded at each stage of the analysis."
-          ),
-          br()
-        )
-      ),
-      tabPanel(
-        strong("Contact"),
-        br(),
-        tags$div(includeMarkdown("./documents/contact.md"), style = "max-width:800px;")
-      )
-    )
-  )
-))
-
-
-# options(shiny.maxRequestSize=100*1024^2)
-options(shiny.maxRequestSize=100*1024^3)
 server <- shinyServer(function(input, output, session) {
-
-  remove_outliers2 <- function(target, low_percentile = 1, high_percentile = 99) {
-  low_threshold <- quantile(target, low_percentile / 100)
-  high_threshold <- quantile(target, high_percentile / 100)
-  target <- target[target >= low_threshold & target <= high_threshold]
-  return(target) }
-
-  keep_marker_inlier_rows <- function(data, markers) {
-    keep_rows <- rep(TRUE, nrow(data))
-    markers <- unique(markers[markers %in% names(data)])
-
-    for (marker in markers) {
-      inlier_values <- remove_outliers2(data[[marker]])
-      keep_rows <- keep_rows & data[[marker]] %in% inlier_values
-    }
-
-    keep_rows[is.na(keep_rows)] <- FALSE
-    keep_rows
-  }
 
       find_mode2 <- function(x) {
         ux <- unique(x)
@@ -591,14 +172,13 @@ observeEvent(input$updateGates, {
   chosen_patient <- selected_patients_man[current_patient()]
   chosen_marker  <- selected_columns_man[current_marker()]
 
-  updated_df <- csv_save_file_path()
+  updated_df <- gate_results()
   if (!is.null(updated_df)) {
     updated_df$Gate[
       updated_df$Marker == chosen_marker &
       updated_df$Patient == chosen_patient
     ] <- new_gate_value
-    csv_save_file_path(updated_df)
-    resultdf_reactive(updated_df)
+    gate_results(updated_df)
   }
 
 })
@@ -649,183 +229,6 @@ plot_gating_grid_pdf_all = function(df, unique_ids, column_names) {
 
   return(p)
 }
-
-  skew_gate <- function(x, alpha=0.01) {
-    sk <- moments::skewness(x)
-
-    n <- length(x)
-    a <- locmodes(x)$locations[1]
-
-    b <- max(x)
-
-    if (sk < 0) {
-      message("The skewness is negative!")
-
-
-      outputGMM <- Mclust(x, G = 2)
-      gmm_gate <- mean(outputGMM$parameters$mean)
-
-       n_removed <- sum(x > gmm_gate)
-       perc_removed <- round(n_removed / n, 3)
-
-      return(list(
-      skewness = sk,
-      cutoff = gmm_gate,
-      N = n,
-      N_removed = n_removed,
-      percentage_removed = perc_removed,
-      returnvalplot = x[which(x> a+(b-a)/2)]
-    ))
-    }
-
-    iteration <- 0
-
-    while (abs(sk) > alpha & iteration <= 100) {
-      if (sk >= 0) {
-        b <- a + (b - a) / 2
-      } else {
-        a <- a + (b - a) / 2
-      }
-      a <- min(a, b)
-      b <- max(a, b)
-
-      sk <- skewness(x[which(x < b)])
-      if (is.nan(sk)) {
-        message("Warning: skewness is NaN")
-        break
-      }
-      iteration <- iteration + 1
-    }
-
-    n_removed <- sum(x > b)
-    perc_removed <- round(n_removed / n, 3)
-
-    print(n_removed)
-    print(perc_removed)
-    list(
-      skewness = sk,
-      cutoff = b,
-      N = n,
-      N_removed = n_removed,
-      percentage_removed = perc_removed,
-      returnvalplot = x[which(x> a+(b-a)/2)]
-    )
-  }
-
-
-  get_gates_csv <- function(dataframe, csv_save_file_path) {
-
-
-  data <- dataframe # Replace with your actual CSV file path
-
-
-  # Get unique values from the imageid column
-  unique_imageids <- unique(data$imageid)
-
-
-  alpha <- 0.01  # Set your desired alpha value
-
-  # Create an empty data frame to store the results
-  results_df <- data.frame(Patient = character(),
-                          Marker = character(),
-                          Gate = numeric(),
-                          stringsAsFactors = FALSE)
-
-
-# Before the loop, set the total number of iterations
-total_iterations <- length(unique_imageids) * ncol(data)
-
-progress <- Progress$new(session, min = 1, max = total_iterations)
-progress$set(message = "Randkluft in action...", value = 0)
-
-# Loop through each unique imageid
-for (imageid in unique_imageids) {
-  sub_data <- data[data$imageid == imageid, -1]
-
-  # Loop through each column in sub_data
-  for (col_idx in 1:ncol(sub_data)) {
-    col_name <- colnames(sub_data)[col_idx]
-    values <- sub_data[, col_idx]
-
-    values <- remove_outliers2(values)
-    values <- values[!is.infinite(values)]
-
-    result <- skew_gate(values, alpha)$cutoff
-
-    # Append row to results_df
-    results_df <- rbind(results_df, data.frame(Patient = imageid, Marker = col_name, Gate = result))
-
-    cat("Image ID:", imageid, "Marker:", col_name, "Result:", result, "\n")
-
-    # Calculate the current iteration
-    current_iteration <- (match(imageid, unique_imageids) - 1) * ncol(sub_data) + col_idx
-
-    # Update the progress bar
-    progress$set(message = "Randkluft in Action...", value = current_iteration)
-  }
-}
-
-progress$close()
-
-return(results_df)
-
-
-  }
-
-  get_gates_csv_single <- function(dataframe, csv_save_file_path) {
-
-
-  remove_outliers2 <- function(target, low_percentile = 1, high_percentile = 99) {
-  low_threshold <- quantile(target, low_percentile / 100)
-  high_threshold <- quantile(target, high_percentile / 100)
-  target <- target[target >= low_threshold & target <= high_threshold]
-  return(target)
-}
-
-
-  data <- dataframe # Replace with your actual CSV file path
-
-
-  # List of markers
-  markers <- colnames(data)[-1]
-
-  # Create a list to store ggplot objects
-  histogram_list <- list()
-
-   # Define skew_gate function above
-
-  alpha <- 0.01  # Set your desired alpha value
-
-  # Create an empty data frame to store the results
-  results_df <- data.frame(Patient = character(),
-                          Marker = character(),
-                          Gate = numeric(),
-                          stringsAsFactors = FALSE)
-
-  # Loop over unique imageids
-  unique_imageids <- unique(data$imageid)
-  for (imageid in unique_imageids) {
-    for (marker in markers) {
-      # Subset data for the current imageid and marker
-      subset_data <- data[data$imageid == imageid, c("imageid", marker)]
-
-
-      # Calculate gate value using skew_gate function
-      result_to_plot <- skew_gate(subset_data[[marker]])  # Replace with your desired alpha
-      skewness_value <- result_to_plot$skewness
-      cutoff_value <- result_to_plot$cutoff
-
-       # Append row to results_df
-      results_df <- rbind(results_df, data.frame(Patient = imageid, Marker = marker, Gate = cutoff_value))
-
-      cat("Image ID:", imageid, "Marker:", marker, "Result:", cutoff_value, "\n")
-    }}
-
-
-  return(results_df)
-
-
-  }
 
 
   shinyjs::hide("patient_number")
@@ -938,170 +341,16 @@ return(results_df)
 
   })
 
-check_if_logged <- function(data) {
-  max_vals <- sapply(data, max, na.rm = TRUE)
-  any(max_vals > 20)
-}
-
-sub_data_logged <- reactiveVal(NULL)
-
- read_batch_with_progress = function(file_path,nrows,no_batches){
-    progress = Progress$new(session, min = 1,max = no_batches)
-    progress$set(message = "Processing File...")
-    seq_length = ceiling(seq.int(from = 2, to = nrows-2,length.out = no_batches+1))
-    seq_length = seq_length[-length(seq_length)]
-
-
-    for(i in seq_along(seq_length)){
-      progress$set(value = i)
-      if(i == no_batches) chunk_size = -1 else chunk_size = seq_length[i+1] - seq_length[i]
-
-      df_temp = read.csv.sql(file_path, sql = query, dbname = tempfile())
-      colnames(df_temp) = col_names
-      df = rbind(df,df_temp)
-    }
-
-    progress$close()
-    return(df)
-  }
-
-
   observeEvent(input$cell_file, {
-
-
-    n_rows = length(count.fields(input$cell_file$datapath))
-    csv_columns <- names(read.csv(input$cell_file$datapath, nrows = 0, check.names = FALSE))
-
-
-    # df_out = read_batch_with_progress(input$file1$datapath,n_rows,10)
-    # Generate a sample of 10 numbers from 1 to 20 without replacement
-    if (n_rows > 70000) {
-      sample_numbers <- sample(1:n_rows, 70000, replace = FALSE)
-    } else {
-      sample_numbers <- seq(1:n_rows)
-    }
-    if ("CellID" %in% csv_columns) {
-      # Create the SQL query string
-      query <- sprintf("SELECT * FROM file WHERE CellID IN (%s)", paste(sample_numbers, collapse = ", ")) #the first row should be called CellID
-      uploaded_df(read.csv.sql(input$cell_file$datapath, sql = query, dbname = tempfile()))
-    } else {
-      uploaded_intermediate <- read.csv(input$cell_file$datapath, header = TRUE, check.names = FALSE)
-      if (nrow(uploaded_intermediate) > 70000) {
-        uploaded_intermediate <- uploaded_intermediate[sample(seq_len(nrow(uploaded_intermediate)), 70000), , drop = FALSE]
-      }
-      uploaded_df(uploaded_intermediate)
-    }
-
-
-    # uploaded_df(read.csv(input$cell_file$datapath, header = TRUE, check.names=FALSE))
-
-    # uploaded_df(read(input$cell_file$datapath))
-
-    print("DONE LOADING CSV INITIAL")
-
-
-      new_column_name <- "imageid"
-      old_column_name <- "imageID"
-
-      # Get current value of the reactiveVal
-      current_df <- uploaded_df()
-
-      if (old_column_name %in% colnames(current_df)) {
-        colnames(current_df)[colnames(current_df) == old_column_name] <- new_column_name
-        uploaded_df(current_df)  # Update the reactiveVal with the modified dataframe
-      } else {
-        print("Column not found")
-      }
-
-      print(colnames(current_df))
-
-      # Get the indices of columns with empty string as name
-      empty_string_cols <- which(colnames(current_df) == "")
-
-      # Remove columns with empty string as name
-      if (length(empty_string_cols) > 0) {
-        current_df <- current_df[,-empty_string_cols, drop = FALSE]
-        uploaded_df(current_df)
-      }
-
-    print('colnames after drop blank')
-
-    print(colnames(uploaded_df()))
-    # Define the column names you want to exclude
-    columns_to_exclude <- c("imageid", "phenotype", "ROI_major_category", "CellID", "Cell", "Row", "X", "Y", "ROI_minor_category", "phenotype_v2", "X_centroid", "Y_centroid", "Eccentricity", "Area", "MajorAxisLength",
-    "MinorAxisLength", "Extent", "Solidity", "Orientation", "", "DNA6a")  # List the columns to exclude
-    column_names <- setdiff(names(uploaded_df()), columns_to_exclude)
-
-    print(column_names)
-
-
-    print("pre")
-    max_values <- sapply(uploaded_df()[column_names], max)
-    print("post")
-
-
-    uploaded_intermediate <- uploaded_df()
-    uploaded_intermediate[column_names] <- sapply(uploaded_intermediate[column_names], as.numeric)
-    uploaded_intermediate[column_names] <- data.frame(lapply(uploaded_intermediate[column_names], function(x) ifelse(x >= 0 & x < 10, 10, x)))
-
-    if (any(max_values > 20)) {
-        cat("Working with raw data\n")
-        uploaded_intermediate[column_names] <- sapply(uploaded_intermediate[column_names], log)
-        uploaded_df(uploaded_intermediate)
-      } else {
-        cat("Working with logged values\n")
-      }
-
-      uploaded_intermediate$imageid <- rep("sample", nrow(uploaded_intermediate))
-      uploaded_df(uploaded_intermediate)
-      if (any(c("DNA1", "DNA_1", "DAPI1", "DAPI_1", "Hoechst1", "Hoechst_1") %in% colnames(uploaded_df()))) {
-        uploaded_intermediate$DNA1 <- rep(1, nrow(uploaded_df()))
-        uploaded_df(uploaded_intermediate)
-      }
-
-      if ("X" %in% colnames(uploaded_df())) {
-        colnames(uploaded_intermediate)[which(names(uploaded_intermediate) == "X")] <- "X_centroid"
-        uploaded_df(uploaded_intermediate)
-      }
-
-
-      if ("Y" %in% colnames(uploaded_df())) {
-        colnames(uploaded_intermediate)[which(names(uploaded_intermediate) == "Y")] <- "Y_centroid"
-        uploaded_df(uploaded_intermediate)
-      }
-
-      if (!"X_centroid" %in% colnames(uploaded_intermediate)) {
-        grid_width <- max(1, ceiling(sqrt(nrow(uploaded_intermediate))))
-        uploaded_intermediate$X_centroid <- ((seq_len(nrow(uploaded_intermediate)) - 1) %% grid_width) + 1
-        uploaded_df(uploaded_intermediate)
-      }
-
-      if (!"Y_centroid" %in% colnames(uploaded_intermediate)) {
-        grid_width <- max(1, ceiling(sqrt(nrow(uploaded_intermediate))))
-        uploaded_intermediate$Y_centroid <- ((seq_len(nrow(uploaded_intermediate)) - 1) %/% grid_width) + 1
-        uploaded_df(uploaded_intermediate)
-      }
-
-
-          print("DONE LOADING CSV FINAL after POST")
-
-
-          print(colnames(uploaded_df()))
-
+    uploaded_df(prepare_cell_data(read_cell_data(input$cell_file$datapath)))
     showNotification("File Ready for Use", duration = 10, id = "message")
-
-
-    # Show the checkboxGroupInput
     shinyjs::show("selected_columns")
     shinyjs::show("selected_columns_phenotyping")
-
-
   })
 
 
   pdf_file_path <- reactiveVal(NULL)
-  csv_save_file_path <- reactiveVal(NULL)
-  resultdf_reactive <- reactiveVal(NULL)
+  gate_results <- reactiveVal(NULL)
 
 
   observeEvent(input$run_gate, {
@@ -1133,7 +382,6 @@ sub_data_logged <- reactiveVal(NULL)
      print(head(sub_data))
 
     pdf_file_name <- "temp_histograms.pdf"  # Get user-provided file name
-    csv_save_file_name <- "temp_gates.csv"  # Get user-provided file name
 
     # Show the progress bar
 
@@ -1141,17 +389,13 @@ sub_data_logged <- reactiveVal(NULL)
     if (length(selected_columns)==1){
       print("hi")
       print(colnames(sub_data))
-      resultdf_to_save = get_gates_csv_single(sub_data, csv_save_file_name)
+      resultdf_to_save = get_gates_csv_single(sub_data)
     }
     else {
-      resultdf_to_save = get_gates_csv(sub_data, csv_save_file_name)
+      resultdf_to_save = get_gates_csv(sub_data, session)
     }
-    resultdf_reactive(resultdf_to_save)
-
-
     print(resultdf_to_save)
-
-    csv_save_file_path(resultdf_to_save)
+    gate_results(resultdf_to_save)
 
       dataframe_pos <- uploaded_df()
 
@@ -1161,9 +405,9 @@ sub_data_logged <- reactiveVal(NULL)
     # Iterate over each marker column and add positivity/negativity column
     for (chosen_patient in unique_patients) {
     for (marker_col in selected_columns) {
-      gate_value <- resultdf_reactive()$Gate[
-        resultdf_reactive()$Marker == marker_col &
-        resultdf_reactive()$Patient == chosen_patient
+      gate_value <- gate_results()$Gate[
+        gate_results()$Marker == marker_col &
+        gate_results()$Patient == chosen_patient
       ]
 
 
@@ -1194,15 +438,6 @@ sub_data_logged <- reactiveVal(NULL)
     )
 
   })
-
-  # Function to determine marker positivity/negativity based on gate value and marker intensity
-determine_positivity <- function(marker_intensity, gate_value) {
-  if (marker_intensity > gate_value) {
-    return("+")  # Marker intensity above gate value is positive
-  } else {
-    return("-")  # Marker intensity below gate value is negative
-  }
-}
 
   # Define reactive values
 current_marker <- reactiveVal(1)
@@ -1289,7 +524,7 @@ get_density_3d <- function(x, y, z, grid_size = 24) {
   # Always register at server level so reactive to outputinterceptreactive()
   # at all times; visibility is controlled by the toggle below.
   output$gated_histogram_on_page <- renderPlot({
-    req(uploaded_df(), resultdf_reactive(), histplot_gate_switch())
+    req(uploaded_df(), gate_results(), histplot_gate_switch())
     generatePlot()
   })
 
@@ -1372,9 +607,9 @@ digrepresentation <- ggplot(filtered_data_xy, aes(x = X_centroid, y = Y_centroid
   ylab("Y Centroid") +
   labs(title = 'Digital Representation')
 
-gate_value <- resultdf_reactive()$Gate[
-  resultdf_reactive()$Marker == chosen_marker &
-    resultdf_reactive()$Patient == chosen_patient
+gate_value <- gate_results()$Gate[
+  gate_results()$Marker == chosen_marker &
+    gate_results()$Patient == chosen_patient
 ]
 
 if (!is.null(outputinterceptreactive())) {
@@ -1569,10 +804,7 @@ write_message_pdf <- function(file, title, message, width = 10, height = 10) {
 }
 
 resolve_gate_value <- function(patient_id, marker, data) {
-  gates <- csv_save_file_path()
-  if (is.null(gates)) {
-    gates <- resultdf_reactive()
-  }
+  gates <- gate_results()
 
   gate_value <- numeric(0)
   if (!is.null(gates) && all(c("Patient", "Marker", "Gate") %in% names(gates))) {
@@ -2521,7 +1753,7 @@ observeEvent(event_data("plotly_selected"), {
       # Functions that return statistics from the models in list, save into csv and download
   output$downloadPhenotypes <- downloadHandler(
     filename = function() {
-      if (!is.null(csv_save_file_path())) {
+      if (!is.null(gate_results())) {
         if (!is.null(input$csv_name)) {
           return(paste0(input$csv_name, ".csv"))
         } else {
@@ -2543,7 +1775,7 @@ observeEvent(event_data("plotly_selected"), {
       # Functions that return statistics from the models in list, save into csv and download
   output$downloadEstimations <- downloadHandler(
     filename = function() {
-      if (!is.null(csv_save_file_path())) {
+      if (!is.null(gate_results())) {
         if (!is.null(input$csv_name)) {
           return(paste0(input$csv_name, ".csv"))
         } else {
@@ -2556,7 +1788,7 @@ observeEvent(event_data("plotly_selected"), {
 
     },
     content = function(file) {
-      mydftosave = csv_save_file_path()
+      mydftosave = gate_results()
       write.csv(mydftosave, file, row.names = FALSE)
     }
   )
@@ -3591,15 +2823,32 @@ subsetAndCount <- function(df, phenotype_df) {
   })
 
 
-   observeEvent(input$phen_wfl, {
-     phenotype_wfl_reactive(read.csv(input$phen_wfl$datapath))
-     print(phenotype_wfl_reactive())
+  observeEvent(input$phen_wfl, {
+    df <- read.csv(input$phen_wfl$datapath, stringsAsFactors = FALSE)
+    phenotype_wfl_reactive(df)
+    print(phenotype_wfl_reactive())
+    if ("phenotype" %in% names(df) && "markers" %in% names(df)) {
+      phenotype_df(df)
+    }
   })
 
   output$phenotype_output <- renderText({
   return("")  # Placeholder or empty text
 })
 
+
+  phenotype_statistics <- reactiveVal(NULL)
+  phenotype_bar_plot <- reactiveVal(NULL)
+
+  output$post_statistics <- renderText({
+    req(!is.null(phenotype_statistics()))
+    paste("Partition Diversity Estimate:", round(phenotype_statistics(), 5), sep = "\n")
+  })
+
+  output$pheno_bar <- renderPlot({
+    req(!is.null(phenotype_bar_plot()))
+    phenotype_bar_plot()
+  })
 
 # Observe the Fetch Subsets button click
   observeEvent(input$define_phenotype_AUTO, {
@@ -3636,24 +2885,14 @@ subsetAndCount <- function(df, phenotype_df) {
 
         MLEP <- MLEp(abundance(species))
 
-         output$post_statistics <- renderText({
-            # Create a message for statistics
-            message <- "Partition Diversity Estimate:"
-            mle_statistics <- round(MLEP, 5)
-
-            # Combine the message and MLE statistics
-            paste(message, mle_statistics, sep = "\n")  # Use <br> to insert a line break
-
-          })
+        phenotype_statistics(MLEP)
 
         # bootstrap
 
 
         print(round(MLEP, 5))
 
-      output$pheno_bar <- renderPlot({
-              barchart
-            })
+      phenotype_bar_plot(barchart)
 
 
   })
@@ -3662,26 +2901,6 @@ subsetAndCount <- function(df, phenotype_df) {
     phenotype_df()
   })
 
-
-  observeEvent(input$phen_wfl, {
-    inFile <- input$phen_wfl
-
-    df <- read.csv(inFile$datapath, stringsAsFactors = FALSE)
-
-    # Check for valid columns in the uploaded file
-    if ("phenotype" %in% names(df) && "markers" %in% names(df)) {
-      # phenotype_df_LOADED <<- bind_rows(phenotype_df_LOADED, df) %>%
-      #   distinct()  # Remove duplicate rows if any
-
-      phenotype_df(df)
-    }
-
-  output$phenotypeTable <- renderTable({
-    phenotype_df()
-  })
-
-  }
-  )
 
       })
 
