@@ -38,6 +38,7 @@ library(gridExtra)
 # source codes
 source("utils.R")
 source("R/gating.R")
+source("R/diagnostics.R")
 source("R/data-input.R")
 source("R/app-ui.R")
 
@@ -75,6 +76,7 @@ server <- shinyServer(function(input, output, session) {
     print(find_mode2(target))
 
     if (do_ggplot == TRUE) {
+      separation <- marker_separation_diagnostic(target)
       plot <- ggplot(data.frame(x = target), aes(x = x)) +
         geom_histogram(aes(y = after_stat(density)), bins = 100,
                        fill = "lightblue",
@@ -91,6 +93,7 @@ server <- shinyServer(function(input, output, session) {
         labs(
           x = "",
           y = "",
+          subtitle = separation$label,
           title = paste(
             "N+=", output$N_removed,
             " ",
@@ -102,6 +105,7 @@ server <- shinyServer(function(input, output, session) {
         xlab(marker) +
         theme(
           plot.title = element_text(size = 18, face = "bold", family = "Arial"),
+          plot.subtitle = element_text(size = 12, family = "Arial"),
           axis.title = element_text(size = 16, family = "Arial"),
           axis.text = element_text(size = 14, family = "Arial")
         )
@@ -743,6 +747,7 @@ make_marker_histogram_plot <- function(data, patient_id, marker, gate_value, tit
   n_positive <- if (is.na(gate_value)) NA_integer_ else sum(target > gate_value)
   positive_rate <- if (is.na(gate_value)) NA_real_ else round(n_positive / length(target), 3)
   plot_values <- remove_outliers2(target)
+  separation <- marker_separation_diagnostic(plot_values)
   plot_df <- data.frame(x = plot_values)
 
   histogram_plot <- ggplot(plot_df, aes(x = x)) +
@@ -756,9 +761,10 @@ make_marker_histogram_plot <- function(data, patient_id, marker, gate_value, tit
     labs(
       title = "Gate Histogram",
       subtitle = if (is.na(gate_value)) {
-        "Gate unavailable"
+        paste("Gate unavailable", separation$label, sep = "\n")
       } else {
-        paste0("N+ = ", n_positive, "   +R = ", positive_rate, "   Gate = ", round(gate_value, 2))
+        paste0("N+ = ", n_positive, "   +R = ", positive_rate,
+               "   Gate = ", round(gate_value, 2), "\n", separation$label)
       },
       x = marker,
       y = "Density"
@@ -766,7 +772,8 @@ make_marker_histogram_plot <- function(data, patient_id, marker, gate_value, tit
     theme_minimal(base_family = "sans") +
     theme(
       plot.title = element_text(face = "bold", hjust = 0.5, size = title_size),
-      plot.subtitle = element_text(hjust = 0.5, size = title_size),
+      plot.subtitle = element_text(hjust = 0.5, size = title_size * 0.75,
+                                   lineheight = 1.1),
       panel.grid.minor = element_blank(),
       aspect.ratio = 1
     )
