@@ -28,7 +28,6 @@ library(philentropy)
 library(fastICA)
 library(tiff)
 library(datasets)
-data(iris)
 library(stringr)
 library(tidyr)
 library(PEkit)
@@ -184,55 +183,6 @@ observeEvent(input$updateGates, {
 })
 
 
-plot_gating_grid_pdf_all = function(df, unique_ids, column_names) {
-  plot_list = list()
-
-  names_columns = names(df)
-  # Calculate the number of rows and columns for mfrow
-  n_plots_per_row = length(column_indices)  # Adjust this as needed
-  n_plots = length(unique_ids) * length(column_indices)
-  n_rows = ceiling(n_plots / n_plots_per_row)
-
-  print(n_rows)
-  print(n_plots)
-  print(n_plots_per_row)
-
-  for (unique_id in unique_ids) {
-    par(mfrow=c(5,4), mar = c(5.1, 3, 4.1, 2))
-
-  # for (a in c(1:2)) {
-    # par(mfrow = c(n_rows, n_plots_per_row), mar = c(5.1, 4.1, 4.1, 2.1))
-    # par(mfrow = c(1, 1))
-
-    for (j in column_indices) {
-    target <- df[df$imageid == unique_id, j]
-
-
-    target <- remove_outliers2(target)
-
-
-    target <- target[!is.infinite(target)]
-
-    marker <- paste0(c(unique_id, names_columns[j]), collapse = "; ")
-    output <- skew_gate(target, 0.01)
-
-    p_temp = plot_gating_individual(target, output, marker)
-    plot_list = c(plot_list, list(p_temp))
-  }
-  }
-
-  # Limit the number of plots to a maximum of 180
-  # plot_list <- plot_list[1:min(length(plot_list), 1)]
-
-  # p = gridExtra::grid.arrange(grobs = plot_list, ncol = n_plots_per_row, nrow= n_rows)
-  p = gridExtra::grid.arrange(grobs = plot_list)
-
-  return(p)
-}
-
-
-  shinyjs::hide("patient_number")
-
   observe({
 
     req(uploaded_df())
@@ -283,35 +233,17 @@ plot_gating_grid_pdf_all = function(df, unique_ids, column_names) {
 
     # Select all column names except the ones to exclude
     column_names <- setdiff(names(uploaded_df()), columns_to_exclude)
-    reactive_markers_selected(column_names)
-
-
     updateCheckboxGroupInput(session, "selected_columns", choices = column_names, selected = column_names)
     updateCheckboxGroupInput(session, "selected_columns_phenotyping", choices = column_names, selected = column_names)
     runjs("document.getElementById('message_loading_data').style.display = 'none';")
 
   })
 
-# Define a reactiveVal for plot height
-#   plotHeight <- reactiveVal("2060px")
-
-
-  reactive_markers_selected <- reactiveVal(NULL)
-
   uploaded_df <- reactiveVal(NULL)
-# Define a reactive value for the GMM gate switch
-  gmm_gate_switch <- reactiveVal(TRUE)  # Initialize with the desired default value
-  # You can set the initial value based on the user's preference or the default value
 
   histplot_gate_switch <- reactiveVal(TRUE)  # Initialize with the desired default value
-  # You can set the initial value based on the user's preference or the default value
 
-  # Observe the change in the GMM gate switch input and update the reactive value
-  observeEvent(input$GMM_gate_on_off, {
-    gmm_gate_switch(input$GMM_gate_on_off)
-  })
-
-  # Observe the change in the GMM gate switch input and update the reactive value
+  # Observe the histogram visibility switch.
   observeEvent(input$gen_hist_plots_on_off, {
 
     histplot_gate_switch(input$gen_hist_plots_on_off)
@@ -326,7 +258,6 @@ plot_gating_grid_pdf_all = function(df, unique_ids, column_names) {
      # Hide the checkboxGroupInput
     shinyjs::hide("selected_columns")
     shinyjs::hide("gated_histogram_on_page")
-    shinyjs::hide("patient_number")
     shinyjs::hide("histogram_plot")
 
     shinyjs::hide("summary_output")
@@ -336,7 +267,6 @@ plot_gating_grid_pdf_all = function(df, unique_ids, column_names) {
 
     updateSelectInput(session, "yvar", choices = character(0), selected = character(0))
     updateSelectInput(session, "xvar", choices = character(0), selected = character(0))
-    updateSelectInput(session, "marker", choices = character(0), selected = character(0))
 
 
   })
@@ -349,7 +279,6 @@ plot_gating_grid_pdf_all = function(df, unique_ids, column_names) {
   })
 
 
-  pdf_file_path <- reactiveVal(NULL)
   gate_results <- reactiveVal(NULL)
 
 
@@ -443,11 +372,6 @@ plot_gating_grid_pdf_all = function(df, unique_ids, column_names) {
 current_marker <- reactiveVal(1)
 current_patient <- reactiveVal(1)
 
-
-current_4panel <- reactiveValues(p1=NULL,p2=NULL,p3=NULL, p4=NULL)
-
-# Define a reactiveVal to store the user-defined intercept value
-user_defined_intercept <- reactiveVal(NULL)
 
 observeEvent(input$nextMarker, {
 
@@ -686,11 +610,6 @@ arranged_plots <- grid.arrange(histogram_plot, digrepresentation, overlay_plot2,
 
   # Print the arranged plots
   print(arranged_plots)
-
-  current_4panel$p1 <- histogram_plot
-  current_4panel$p2 <- overlay_plot2
-  current_4panel$p3 <- digrepresentation
-  current_4panel$p4 <- contour_plot
 
   runjs("document.getElementById('message_gen_hist').style.display = 'none';")
   shinyjs::show("gated_histogram_on_page")
@@ -1036,7 +955,6 @@ generate_histogram_pdf <- function(subdata_to_plot, pdf_file_name, markers = NUL
 
   if (length(markers) == 0 || length(patient_ids) == 0) {
     grid::grid.draw(make_pdf_message_grob("No plots available", "Run Randkluft and select at least one marker before downloading all plots."))
-    pdf_file_path(pdf_file_name)
     return(invisible(pdf_file_name))
   }
 
@@ -1061,7 +979,6 @@ generate_histogram_pdf <- function(subdata_to_plot, pdf_file_name, markers = NUL
     }
   }
 
-  pdf_file_path(pdf_file_name)
   invisible(pdf_file_name)
 }
 
@@ -1127,60 +1044,6 @@ generate_histogram_pdf <- function(subdata_to_plot, pdf_file_name, markers = NUL
   unique(uploaded_df()$imageid)
   })
 
-  observe({
-  shinyjs::show("patient_number")
-  updateRadioButtons(session, "patient_number", choices = unique_patients())
-})
-
- observe({
-  updateRadioButtons(session, "patient_number_im_gargage", choices = unique_patients())
-})
-
- observe({
-  shinyjs::show("patients_ts")
-  updateRadioButtons(session, "patients_ts", choices = unique_patients())
-})
-
-
- observe({
-  shinyjs::show("cycle_ts")
-  updateRadioButtons(session, "cycle_ts", choices = cycle_detected())
-})
-
- observe({
-  shinyjs::show("precrev_marker")
-  updateRadioButtons(session, "precrev_marker", choices = unique_markers_w_DNA())
-})
-
-  unique_markers_w_DNA <- reactive({
-    req(uploaded_df())
-    colnames(uploaded_df())
-    # Define the column names you want to exclude
-    columns_to_exclude <- c("imageid", "phenotype", "ROI_major_category", "CellID", "Cell", "Row", "X", "Y",
-     "ROI_minor_category", "phenotype_v2", "X_centroid", "Y_centroid", "Eccentricity", "Area", "MajorAxisLength",
-    "MinorAxisLength", "Extent", "Solidity", "Orientation", "")  # List the columns to exclude
-    # Select all column names except the ones to exclude
-    # Define the regular expression pattern to identify columns to be excluded
-    # exclude_pattern <- "DNA|DAPI"
-
-    # # Use grep to get the column names matching the pattern
-    # exclude_columns <- grep(exclude_pattern, colnames(uploaded_df()), value = TRUE, ignore.case = TRUE)
-
-    # Add the excluded columns to the original 'columns_to_exclude' vector
-    # columns_to_exclude <- c(columns_to_exclude, exclude_columns)
-      # Define the regular expression pattern to identify columns to be excluded
-      exclude_pattern2 <- "_positivity"
-
-      # Use grep to get the column names matching the pattern
-      exclude_columns2 <- grep(exclude_pattern2, colnames(uploaded_df()), value = TRUE, ignore.case = TRUE)
-
-      columns_to_exclude <- c(columns_to_exclude, exclude_columns2)
-
-    column_names <- setdiff(names(uploaded_df()), columns_to_exclude)
-
-  })
-
-
   unique_markers <- reactive({
     req(uploaded_df())
     colnames(uploaded_df())
@@ -1210,25 +1073,8 @@ generate_histogram_pdf <- function(subdata_to_plot, pdf_file_name, markers = NUL
 
   })
 
-    cycle_detected <- reactive({
-    req(uploaded_df())
-    colnames(uploaded_df())
-    cycle_pattern <- "DNA|DAPI|Hoechst"  # Define your pattern
-
-
-    column_names <- grep(cycle_pattern, colnames(uploaded_df()), value = TRUE, ignore.case = TRUE)
-
-    column_names
-
-  })
-
-
  selected_columns <- reactive({
     input$selected_columns
-  })
-
-  selected_columns_phenotyping <- reactive({
-    input$selected_columns_phenotyping
   })
 
 
@@ -1236,23 +1082,10 @@ generate_histogram_pdf <- function(subdata_to_plot, pdf_file_name, markers = NUL
     unique_patients()
   })
 
-  inputreactiveintercept_USERDEF <- reactive({
-    input$intercept
-  })
-
 
  selected_opacity <- reactive({
     input$opacity_slider
   })
-
-
-  observe({
-    updateSelectInput(session, "marker", choices = unique_markers())
-})
-
- observe({
-    updateSelectInput(session, "marker_im_garage", choices = unique_markers())
-})
 
 
  observe({
@@ -1322,7 +1155,6 @@ generate_histogram_pdf <- function(subdata_to_plot, pdf_file_name, markers = NUL
 
   brushed_data <- reactiveVal(NULL)
   filtered_data_original <- reactiveVal(NULL)
-  brushed_data_removal <- reactiveVal(NULL)
 
     filtered_data_reactive <- reactiveVal(NULL)
 
@@ -1360,14 +1192,7 @@ generate_histogram_pdf <- function(subdata_to_plot, pdf_file_name, markers = NUL
 })
 
 
-# Function to filter columns based on a pattern
-filter_columns_by_pattern <- function(data, pattern) {
-  selected_columns <- grep(pattern, colnames(data), value = TRUE)
-  return(data[, selected_columns])
-}
-
 regression_mode_react <- reactiveVal(NULL)
-sugremReact <- reactiveVal(NULL)
 klPlotReact <- reactiveVal(NULL)
 filtered_data_updated <- reactiveVal(NULL)
 
@@ -2556,39 +2381,6 @@ observeEvent(input$update_gates_bivariate, {
 })
 
 
-  output$plot3 <- renderPlotly({
-  dfplot3 <- subsetted()
-  max_vals <- sapply(dfplot3, max)
-
-
-  if (any(max_vals > 20)) {
-    numeric_cols <- sapply(dfplot3, is.numeric)
-    dfplot3[numeric_cols] <- log(dfplot3[numeric_cols])
-  }
-
-  xvar <- input$xvar
-  yvar <- input$yvar
-
-  gate_vliner <- dfplot3[[xvar]]
-  gate_hliner <- dfplot3[[yvar]]
-
-
-  result_to_plot_x <- skew_gate(gate_vliner)
-  result_to_plot_y <- skew_gate(gate_hliner)
-
-  p <- ggplot(dfplot3, aes(!!input$xvar, !!input$yvar)) +
-    theme(legend.position = "bottom") +
-    geom_point(aes(color = imageid))
-
-  p <- p +
-    geom_vline(aes(xintercept = result_to_plot_x$cutoff), color = "red") +
-    geom_hline(aes(yintercept = result_to_plot_y$cutoff), color = "red")
-
- ggplotly(p)
-
-})
-
-
  output$marker_checkboxes <- renderUI({
     marker_data <- input$selected_columns
 
@@ -2646,43 +2438,8 @@ observeEvent(input$update_gates_bivariate, {
   }
 
 
-  # Function to clean column names by removing extra characters
-cleanColumnNames <- function(dataframe) {
-  names(dataframe) <- gsub("\\.+|\\s+", "", names(dataframe))
-  return(dataframe)
-}
-
-
-phenotype_wfl_reactive <- reactiveVal(NULL)
 # Define the reactive dataframe for phenotypes
 phenotype_df <- reactiveVal(data.frame(phenotype = character(), markers = character()))
-
-
-# Update the reactive dataframe with the defined phenotype
-updatePhenotypeDF <- function(phenotype, markers) {
-  current_df <- phenotype_df()
-  updated_df <- rbind(current_df, data.frame(phenotype = phenotype, markers = markers))
-
-   # Clean column names before updating the reactive dataframe
-  updated_df <- cleanColumnNames(updated_df)
-
-
-  phenotype_df(updated_df)
-}
-
-# Function to update the phenotype dataframe
-updatePhenotypeDF2 <- function(phenotype, markers) {
-  current_df <- phenotype_df()
-
-  # Split the concatenated string by newline and clean the values
-  cleaned_markers <- unlist(strsplit(markers, "\n"))
-  cleaned_markers <- gsub("NULL,?\\s*", "", cleaned_markers)  # Remove "NULL"
-  cleaned_markers <- gsub("^\\s+|\\s+$", "", cleaned_markers)  # Trim leading/trailing spaces
-
-  # Bind the phenotype and markers into the dataframe
-  updated_df <- rbind(current_df, data.frame(phenotype = phenotype, markers = paste(cleaned_markers, collapse = ", ")))
-  phenotype_df(updated_df)
-}
 
 updatePhenotypeDF3 <- function(phenotype_name, phenotype_markers) {
   current_df <- phenotype_df()
@@ -2691,37 +2448,6 @@ updatePhenotypeDF3 <- function(phenotype_name, phenotype_markers) {
   phenotype_df(updated_df)
 }
 
-
-  cleanPhenotype <- function(phenotype_output) {
-  # Split the output string by newline character
-  phenotype_list <- strsplit(phenotype_output, "\n")[[1]]
-
-  # Remove the NULL values and extract the relevant information
-  cleaned_phenotype <- lapply(phenotype_list, function(phenotype) {
-    parts <- unlist(strsplit(phenotype, ", "))  # Split by ", "
-    cleaned_parts <- parts[parts != "NULL"]     # Remove "NULL"
-    cleaned_phenotype <- paste(cleaned_parts, collapse = ", ")  # Recreate the string
-    return(cleaned_phenotype)
-  })
-
-  return(cleaned_phenotype)
-}
-
-cleanPhenotype2 <- function(phenotype_output) {
-  # Split the output string by newline character
-  phenotype_list <- strsplit(phenotype_output, "\n")[[1]]
-
-  # Remove the NULL values and extract the relevant information
-  cleaned_phenotype <- lapply(phenotype_list, function(phenotype) {
-    parts <- unlist(strsplit(phenotype, ", "))  # Split by ", "
-    cleaned_parts <- parts[parts != "NULL"]     # Remove "NULL"
-    cleaned_parts <- parts[-1]  # Exclude the first part before the first comma
-    cleaned_phenotype <- paste(cleaned_parts, collapse = ", ")  # Recreate the string
-    return(cleaned_phenotype)
-  })
-
-  return(cleaned_phenotype)
-}
 
 cleanPhenotype3 <- function(phenotype_output) {
   # Split the output string by newline character
@@ -2791,11 +2517,6 @@ subsetAndCount <- function(df, phenotype_df) {
       print(phenotype)
       print(class(phenotype))
 
-      phenotype_list_marker_indicators <- phenotype
-
-      #remove first occurrence of "e" from vector
-      # phenotype <- str_remove_all(phenotype, "NULL")
-
       phenotype <- cleanPhenotype3(phenotype)
 
       print(phenotype)
@@ -2806,9 +2527,6 @@ subsetAndCount <- function(df, phenotype_df) {
 
 
     }
-      # Update the reactive dataframe with the defined phenotype
-      # updatePhenotypeDF(phenotype)
-
     # Update the reactive dataframe with the defined phenotype and markers
     updatePhenotypeDF3(input$phenotype_name, output_text_phenotype)
 
@@ -2825,16 +2543,11 @@ subsetAndCount <- function(df, phenotype_df) {
 
   observeEvent(input$phen_wfl, {
     df <- read.csv(input$phen_wfl$datapath, stringsAsFactors = FALSE)
-    phenotype_wfl_reactive(df)
-    print(phenotype_wfl_reactive())
+    print(df)
     if ("phenotype" %in% names(df) && "markers" %in% names(df)) {
       phenotype_df(df)
     }
   })
-
-  output$phenotype_output <- renderText({
-  return("")  # Placeholder or empty text
-})
 
 
   phenotype_statistics <- reactiveVal(NULL)
