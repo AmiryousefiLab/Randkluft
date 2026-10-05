@@ -38,6 +38,7 @@ library(gridExtra)
 # source codes
 source("utils.R")
 source("R/gating.R")
+source("R/phenotyping.R")
 source("R/diagnostics.R")
 source("R/data-input.R")
 source("R/app-ui.R")
@@ -1557,7 +1558,12 @@ observeEvent(event_data("plotly_selected"), {
       "phenotype_table.csv"
     },
     content = function(file) {
-      write.csv(phenotype_df(), file, row.names = FALSE)
+      selected_markers <- input$selected_columns
+      required_markers <- colnames(normalize_phenotype_definitions(phenotype_df())$states)
+      workflow <- export_phenotype_workflow(
+        phenotype_df(), unique(c(selected_markers, required_markers))
+      )
+      write.csv(workflow, file, row.names = FALSE, na = "NA")
     }
   )
 
@@ -1565,21 +1571,15 @@ observeEvent(event_data("plotly_selected"), {
       # Functions that return statistics from the models in list, save into csv and download
   output$downloadPhenotypes <- downloadHandler(
     filename = function() {
-      if (!is.null(gate_results())) {
-        if (!is.null(input$csv_name)) {
-          return(paste0(input$csv_name, ".csv"))
-        } else {
-
-          return('Phenotypes_included.csv')
-        }
-
+      if (!is.null(input$csv_name) && nzchar(input$csv_name)) {
+        paste0(input$csv_name, ".csv")
+      } else {
+        "Phenotypes_included.csv"
       }
-      showNotification("Run Randkluft first!", duration = NULL, id = "warngate")
-
     },
     content = function(file) {
-      mydftosave = uploaded_df()
-      write.csv(mydftosave, file, row.names = FALSE)
+      req(phenotype_result())
+      write.csv(phenotype_result()$cells, file, row.names = FALSE)
     }
   )
 
@@ -2390,215 +2390,96 @@ observeEvent(input$update_gates_bivariate, {
   })
 
 
-  # Track selected markers and their statuses
   selected_markers_phenotype <- reactive({
     markers <- input$selected_columns
-    markers_statuses <- sapply(markers, function(marker) {
-      if (input[[paste0("checkbox_", marker)]] == TRUE) {
-        if (input[[paste0("switch_", marker)]] == TRUE) {
-          return(paste0(marker, "+"))
-        } else {
-          return(paste0(marker, "-"))
-        }
-      } else {
-        return(NULL)  # Return NULL for unchecked markers
-      }
-    })
-    return(markers_statuses)
+    stats::setNames(vapply(markers, function(marker) {
+      if (!isTRUE(input[[paste0("checkbox_", marker)]])) return(NA_character_)
+      if (isTRUE(input[[paste0("switch_", marker)]])) "+" else "-"
+    }, character(1)), markers)
   })
 
-  # Track phenotype name
-  phenotype_name <- reactive({
-    input$phenotype_name
-  })
+  phenotype_df <- reactiveVal(data.frame(
+    phenotype = character(), markers = character(), match_mode = character()
+  ))
+  phenotype_result <- reactiveVal(NULL)
 
-    # Define the phenotype based on selected markers and phenotype name
-  definePhenotype <- function(markers, phenotype) {
-    markers <- markers[!is.null(markers)]  # Remove NULL entries
-    print(markers)
-    if (length(markers) > 0) {
-      phenotype_str <- paste(phenotype, paste(markers, collapse = ", "), sep = "\n")
-      return(phenotype_str)
-    } else {
-      return("")  # Return empty string if no markers are selected
-    }
-  }
-
-
-# Define the reactive dataframe for phenotypes
-phenotype_df <- reactiveVal(data.frame(phenotype = character(), markers = character()))
-
-updatePhenotypeDF3 <- function(phenotype_name, phenotype_markers) {
-  current_df <- phenotype_df()
-  phenotype <- unlist(strsplit(phenotype_markers, "\n"))[2] # Extract markers excluding the phenotype name
-  updated_df <- rbind(current_df, data.frame(phenotype = phenotype_name, markers = phenotype))
-  phenotype_df(updated_df)
-}
-
-
-cleanPhenotype3 <- function(phenotype_output) {
-  # Split the output string by newline character
-  phenotype_list <- strsplit(phenotype_output, "\n")[[1]]
-
-  # Remove the NULL values and extract the relevant information
-  cleaned_phenotype <- lapply(phenotype_list, function(phenotype) {
-    parts <- unlist(strsplit(phenotype, ", "))  # Split by ", "
-    cleaned_parts <- parts[parts != "NULL"]     # Remove "NULL"
-    cleaned_phenotype <- paste(cleaned_parts, collapse = ", ")  # Recreate the string
-    return(cleaned_phenotype)
-  })
-
-  return(cleaned_phenotype)
-}
-
-
-subsetAndCount <- function(df, phenotype_df) {
-  original_df <- uploaded_df()
-  phenotype_counts <- lapply(1:nrow(phenotype_df), function(i) {
-    markers <- unlist(strsplit(phenotype_df[i, "markers"], ", "))
-    markers <- markers[markers != ""]  # Remove empty elements
-    positive_markers <- markers[grepl("\\+", markers)]
-    negative_markers <- markers[grepl("-", markers)]
-
-    conditions <- lapply(positive_markers, function(marker) {
-      marker <- gsub("[+,]", "", marker)
-      paste0(marker, "_positivity == '+'")
-    })
-
-    neg_conditions <- lapply(negative_markers, function(marker) {
-      marker <- gsub("[-,]", "", marker)
-      paste0(marker, "_positivity == '-'")
-    })
-
-    all_conditions <- c(conditions, neg_conditions)
-    combined_conditions <- paste(all_conditions, collapse = " & ")
-
-    print("combined_conditions below")
-    print(combined_conditions)
-
-    subset_df <- subset(df, subset = eval(parse(text = combined_conditions)))
-
-    #  Assign phenotype to the filtered cells in the original dataset
-    if (nrow(subset_df) > 0) {
-      original_df[rownames(subset_df), 'phenotype'] <- phenotype_df[i, 'phenotype']
-      original_df[, 'phenotype'] <- ifelse(is.na(original_df[, 'phenotype']), 'other', original_df[, 'phenotype'])
-    }
-
-    uploaded_df(original_df)
-    nrow(subset_df)
-  })
-
-  # Find rows that don't satisfy any defined conditions and count them as 'other'
-  other_count <- nrow(df) - sum(unlist(phenotype_counts))
-  phenotype_counts <- c(phenotype_counts, other = other_count)
-
-  names(phenotype_counts) <- c(phenotype_df$phenotype, 'other')
-  print(phenotype_counts)
-  return(phenotype_counts)
-}
+  observeEvent(uploaded_df(), phenotype_result(NULL), ignoreInit = TRUE)
+  observeEvent(phenotype_df(), phenotype_result(NULL), ignoreInit = TRUE)
+  observeEvent(gate_results(), phenotype_result(NULL), ignoreInit = TRUE)
 
   observeEvent(input$define_phenotype, {
-    if (input$define_phenotype > 0) {
-      print(selected_markers_phenotype())
-      phenotype <- definePhenotype(selected_markers_phenotype(), phenotype_name())
-      print(phenotype)
-      print(class(phenotype))
-
-      phenotype <- cleanPhenotype3(phenotype)
-
-      print(phenotype)
-
-      output_text_phenotype <- paste(phenotype, collapse = "\n")
-
-      print(output_text_phenotype)
-
-
-    }
-    # Update the reactive dataframe with the defined phenotype and markers
-    updatePhenotypeDF3(input$phenotype_name, output_text_phenotype)
-
-    print(input$phenotype_name)
-
-    print(phenotype)
-
-    print("my phenotype df is below")
-
-      print(phenotype_df())
-      print(phenotype_df()$markers)
+    tryCatch({
+      selected <- selected_markers_phenotype()
+      selected <- selected[!is.na(selected)]
+      candidate <- rbind(phenotype_df(), data.frame(
+        phenotype = trimws(input$phenotype_name),
+        markers = paste0(names(selected), selected, collapse = ", "),
+        match_mode = if (isTRUE(input$any_indicator)) "any_positive" else "all"
+      ))
+      phenotype_df(normalize_phenotype_definitions(candidate)$definitions)
+    }, error = function(e) {
+      showNotification(conditionMessage(e), type = "error", duration = 10)
+    })
   })
-
 
   observeEvent(input$phen_wfl, {
-    df <- read.csv(input$phen_wfl$datapath, stringsAsFactors = FALSE)
-    print(df)
-    if ("phenotype" %in% names(df) && "markers" %in% names(df)) {
-      phenotype_df(df)
-    }
+    tryCatch({
+      workflow <- read.csv(input$phen_wfl$datapath, stringsAsFactors = FALSE, check.names = FALSE)
+      phenotype_df(normalize_phenotype_definitions(workflow)$definitions)
+    }, error = function(e) {
+      showNotification(conditionMessage(e), type = "error", duration = 10)
+    })
   })
 
+  observeEvent(input$remove_file2, {
+    phenotype_df(data.frame(phenotype = character(), markers = character(), match_mode = character()))
+    reset("phen_wfl")
+  })
 
-  phenotype_statistics <- reactiveVal(NULL)
-  phenotype_bar_plot <- reactiveVal(NULL)
+  observeEvent(input$define_phenotype_AUTO, {
+    result <- tryCatch(
+      phenotype_partition(uploaded_df(), phenotype_df(), gate_results()),
+      error = function(e) {
+        showNotification(conditionMessage(e), type = "error", duration = 10)
+        NULL
+      }
+    )
+    phenotype_result(result)
+  })
 
-  output$post_statistics <- renderText({
-    req(!is.null(phenotype_statistics()))
-    paste("Partition Diversity Estimate:", round(phenotype_statistics(), 5), sep = "\n")
+  output$phenotypeTable <- renderTable(phenotype_df())
+  output$phenotypeSummary <- renderTable({
+    result <- phenotype_result()
+    req(result)
+    within(result$summary, percentage <- round(percentage, 1))
+  })
+
+  output$pheno_bar_ui <- renderUI({
+    result <- phenotype_result()
+    req(result)
+    label_lines <- vapply(result$summary$phenotype, function(label) {
+      max(1L, length(strsplit(wrap_phenotype_label(label, 25L), "\n", fixed = TRUE)[[1]]))
+    }, integer(1))
+    plot_height <- max(380L, 110L + sum(28L * label_lines + 24L))
+    plotOutput("pheno_bar", height = paste0(plot_height, "px"), width = "100%")
   })
 
   output$pheno_bar <- renderPlot({
-    req(!is.null(phenotype_bar_plot()))
-    phenotype_bar_plot()
+    result <- phenotype_result()
+    req(result)
+    plot_phenotype_composition(result$summary)
   })
 
-# Observe the Fetch Subsets button click
-  observeEvent(input$define_phenotype_AUTO, {
-    print(colnames(uploaded_df()))
-      counts <- subsetAndCount(uploaded_df(), phenotype_df())
-    print(counts)
-  # Here 'counts' will contain the counts of rows for each defined phenotype
-    bar_data <- data.frame(
-          phenotype = names(counts),
-          count = unlist(counts)
-        )
-
-      total_counts <- sum(bar_data$count)
-
-      # Calculate percentages
-      bar_data$percentage <- (bar_data$count / total_counts) * 100
-
-      print(bar_data)
-
-      # Plot stacked bar chart
-      barchart <- ggplot(bar_data, aes(fill = phenotype, x = "", y = percentage)) +
-        geom_bar(position = "stack", stat = "identity") +
-        labs(x = NULL, y = "Percentage") +
-        ggtitle("Phenotype Composition") +
-        theme(
-          plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
-          axis.text  = element_text(size = 14),
-          axis.title = element_text(size = 15),
-          legend.text  = element_text(size = 13),
-          legend.title = element_text(size = 14)
-        )
-        population_cells <- uploaded_df()
-        species <- population_cells$phenotype
-
-        MLEP <- MLEp(abundance(species))
-
-        phenotype_statistics(MLEP)
-
-        # bootstrap
-
-
-        print(round(MLEP, 5))
-
-      phenotype_bar_plot(barchart)
-
-
-  })
-
-  output$phenotypeTable <- renderTable({
-    phenotype_df()
+  output$post_statistics <- renderText({
+    result <- phenotype_result()
+    req(result)
+    estimate <- if (is.na(result$diversity)) "not estimable (no defined groups)" else
+      if (is.infinite(result$diversity)) "unbounded (all included cells have distinct groups)" else
+        format(round(result$diversity, 5))
+    paste0("Partition Diversity Estimate (PEkit): ", estimate,
+           "\nIncluded cells: ", result$n_index,
+           "; observed intersection groups: ", result$k_index,
+           "\nOther and Unresolved cells are excluded from this estimate.")
   })
 
 

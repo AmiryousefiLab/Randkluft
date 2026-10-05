@@ -202,7 +202,7 @@ tags$head(tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/aja
                           actionButton("define_phenotype", "Add phenotype definition"),
                           br(),
                           br(),
-                          p('You can download the your original CSV file with phenotypes added as a new column, as well as the phenotype workflow you defined.'),
+                          p('Download the classified cells or the phenotype definitions as CSV files. Unchecked markers do not constrain a definition.'),
                           downloadButton(outputId = "downloadPhenotypes", label = "Download Phenotyped Data"),
                           downloadButton(outputId = "downloadPhenotypeTable", label = "Download Workflow"),
                           br(),
@@ -302,10 +302,12 @@ div(
         # textOutput("phenotype_output"),
               # Create two sections: Left and Right
 
-                column(width = 6, tableOutput("phenotypeTable")),
-                column(width = 6, plotOutput("pheno_bar", height = "500px", width = "500px")),
-
-              verbatimTextOutput("post_statistics"),
+                fluidRow(
+                  column(width = 12, h4("Phenotype definitions"), tableOutput("phenotypeTable")),
+                  column(width = 12, h4("Cell groups"), tableOutput("phenotypeSummary"))
+                ),
+                uiOutput("pheno_bar_ui"),
+                verbatimTextOutput("post_statistics"),
 
 
       # tableOutput("phenotypeTable")# Add your table output here

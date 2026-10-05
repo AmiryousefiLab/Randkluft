@@ -198,6 +198,16 @@ These outputs are suitable for downstream analysis, reporting, and reproducibili
 
 ---
 
+## **5. Phenotyping in Extra**
+
+Define a phenotype by checking its required markers and choosing `+` or `−`. Unchecked markers are unconstrained (`NA`). **Any positive** requires at least one checked positive marker to be positive; checked negative markers must still be negative. You can also upload a `phenotype,markers` workflow CSV with an optional `match_mode` column (`all` or `any_positive`). Downloaded workflows instead contain `status__MarkerName` columns with `+`, `-`, or `NA`; both formats can be uploaded.
+
+Click **Phenotype my data** to evaluate every definition for every cell. Cells matching multiple definitions get an intersection label, such as `T cells and CD4+ helper T cells`. The table and horizontal bar chart show counts and percentages of these exclusive groups, including `Other` and `Unresolved`. The partition diversity estimate excludes those two groups and reports its included-cell count.
+
+**Download Phenotyped Data** exports the same per-cell labels used by the chart and estimate. **Download Workflow** exports the definitions as CSV.
+
+---
+
 ## **Tips**
 - If gating finishes instantly without results, the marker distribution may already be negatively skewed.
 - In such cases, visual inspection and manual gating are recommended.
