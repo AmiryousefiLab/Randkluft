@@ -77,10 +77,12 @@ A progress bar labelled **"Randkluft in Action…"** tracks completion. When fin
 For each marker × patient pair:
 
 1. Remove top and bottom 1% outliers.
-2. Compute the skewness of the full distribution.
+2. Compute the skewness of the remaining finite values.
 3. If skewness < 0 (negatively skewed), fall back to a two-component Gaussian Mixture Model gate.
 4. Otherwise, perform binary search on the upper bound `b` of the distribution, shrinking it until `skewness(data[data < b]) ≈ 0` (tolerance α = 0.01, maximum 100 iterations).
 5. The converged `b` is returned as the gate.
+
+The 1% trimming is used only to estimate the gate, whether one marker or several are selected. The resulting gate is applied to all original finite cell intensities, including values outside the trimmed range. Non-finite intensities are left without a positivity label.
 
 ---
 
@@ -149,6 +151,7 @@ phenotype,markers
 ```
 
 An example file (`phenotype_table_help.csv`) is provided. Click **here** inside the app to download it.
+An optional `match_mode` column can be `all` (the default) or `any_positive`. The app also accepts workflows with `status__MarkerName` columns containing `+`, `-`, or `NA` in place of the `markers` column.
 
 ### 7.2 Define phenotypes manually
 
@@ -156,7 +159,7 @@ Alternatively, use the checkbox interface:
 
 1. Check the markers that define a phenotype.
 2. Toggle the switch beside each marker to `+` (positive) or `−` (negative).
-3. Enable **Any positive** if at least one positive marker is sufficient (OR logic instead of AND).
+3. Leave a marker unchecked to give it an unconstrained (`NA`) status. Enable **Any positive** if at least one checked positive marker is sufficient; all checked negative markers must still be negative.
 4. Type a phenotype name.
 5. Click **Add phenotype definition**.
 
@@ -164,16 +167,14 @@ Repeat for each cell type.
 
 ### 7.3 Apply phenotypes
 
-Click **Phenotype my data**. The app assigns phenotypes to every cell, annotates the original data table with a `phenotype` column, and displays:
+Click **Phenotype my data**. The app evaluates all definitions for each cell and gives it one partition label. For example, a cell matching both `T cells` and `CD4+ helper T cells` is labelled `T cells and CD4+ helper T cells`; a cell matching only the first rule is `T cells only`. Cells matching none are `Other`. Cells whose required marker status is missing and could change their group are `Unresolved`.
 
-- A summary table of phenotype definitions
-- A stacked bar chart of phenotype proportions
-- A **Partition Diversity Estimate** (MLE) summarising compositional diversity
+The app displays the definitions, counts and percentages for the exclusive cell groups, and a horizontal bar chart with wrapped group names. The percentages use all cells as the denominator and sum to 100%. The **Partition Diversity Estimate** uses these same labels, excluding `Other` and `Unresolved`; the app shows the number of included cells and observed groups.
 
 ### 7.4 Export
 
-- **Download Phenotyped Data** — the original CSV with a `phenotype` column appended.
-- **Download Workflow** — the phenotype definition table for reproducibility.
+- **Download Phenotyped Data** — the original cell table with `phenotype` and `matched_phenotypes` columns. The `phenotype` values are exactly those used in the chart and diversity estimate.
+- **Download Workflow** — the phenotype definitions as CSV with one `status__MarkerName` column per marker. Unchecked markers appear explicitly as `NA`. The app also accepts older two-column workflows.
 
 ---
 

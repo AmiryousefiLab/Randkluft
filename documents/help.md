@@ -159,6 +159,8 @@ After uploading your file:
    - A confirmation notice appears:
      **“Gates are found!”**
 
+For each selected marker, Randkluft estimates the gate after excluding the bottom and top 1% of finite intensities. It then applies that gate to every original finite cell intensity, including values outside the estimation range. Non-finite intensities receive no positivity label.
+
 ---
 
 ## **3. Visual inspection and manual adjustment**
@@ -193,6 +195,16 @@ Once you are satisfied with the gates:
   Download only the plots currently displayed in the app.
 
 These outputs are suitable for downstream analysis, reporting, and reproducibility.
+
+---
+
+## **5. Phenotyping in Extra**
+
+Define a phenotype by checking its required markers and choosing `+` or `−`. Unchecked markers are unconstrained (`NA`). **Any positive** requires at least one checked positive marker to be positive; checked negative markers must still be negative. You can also upload a `phenotype,markers` workflow CSV with an optional `match_mode` column (`all` or `any_positive`). Downloaded workflows instead contain `status__MarkerName` columns with `+`, `-`, or `NA`; both formats can be uploaded.
+
+Click **Phenotype my data** to evaluate every definition for every cell. Cells matching multiple definitions get an intersection label, such as `T cells and CD4+ helper T cells`. The table and horizontal bar chart show counts and percentages of these exclusive groups, including `Other` and `Unresolved`. The partition diversity estimate excludes those two groups and reports its included-cell count.
+
+**Download Phenotyped Data** exports the same per-cell labels used by the chart and estimate. **Download Workflow** exports the definitions as CSV.
 
 ---
 
